@@ -63,13 +63,13 @@ function setNewsJson($filename, $json){
  *	JSONは次の書式でなければならない。
  *		[
  *			{
- 				"%param1%": "A Parameter",
-				"%param2%": "Other Parameter",
-				...
-			},
-			{
-				...
-			}
+ *				"%param1%": "A Parameter",
+ *				"%param2%": "Other Parameter",
+ *				...
+ *			},
+ *			{
+ *				...
+ *			}
  *		]
  *	formatの置換はJSONの各エントリのうちキー文字列に一致するものを、キーに対応する値で置換する。
  *	そのためキー文字列はformat中で置換対象文字列として認識可能でなければならない。もし、format中に（置換対象として期待しない）置換対象と同じ文字列が出現した場合、それも置換されてしまう。
@@ -95,7 +95,7 @@ function getNewsHtml($fname, $format){
 /**
  *	runSender()へのget要求の応答メッセージを作成して返す。
  *	@param $config 設定情報
- *	@return 桜桃メッセージ
+ *	@return 応答メッセージ
  */
 function getSenderResponseGet($config){
 	if(empty($config["file"])){
@@ -121,14 +121,30 @@ function getSenderResponseGet($config){
 }
 
 /**
- *	runSender()へのget要求の応答メッセージを作成して返す。
+ *	jsonの値に含まれるHTMLタグをエスケープする。
+ *	クォーテーション（”と'）はエスケープしない。
+ */
+function _escapeText($json){
+	foreach($json as &$entry){
+		foreach($entry as $key => $val){
+			$esc = htmlspecialchars($val, ENT_NOQUOTES | ENT_HTML5, 'utf-8');
+			$entry[$key] = $esc;
+		}
+	}
+	error_log(print_r($json, true));
+	return $json;
+}
+
+/**
+ *	runSender()へのset要求を処理し応答メッセージを作成して返す。
  *	@param $config 設定情報
  *	@param data ファイルに書き込むJSONデータ
  *	@return 応答メッセージ
  */
 function getSenderResponseSet($config, $data){
 	$data = array_slice($data, 0, $config["maxEntry"]);
-	
+	$data = _escapeText($data);
+
 	$json = json_encode($data);
 	if($json === false){
 		return '{"Response": "CannotDecodeJson"}';
@@ -145,6 +161,27 @@ function getSenderResponseSet($config, $data){
 	);
 
 	return json_encode($ret);
+}
+
+/**
+ *	runSender()へのadd要求を処理し応答メッセージを作成して返す。
+ *	既存データを読み込み、新規のデータ追加し、getSenderResponseSet()に処理を移譲する。
+ *	@param $config 設定情報
+ *	@param data ファイルに追加するJSONデータ
+ *	@return 応答メッセージ
+ */
+function getSenderResponseAdd($config, $data){
+	$old = getNewsJson($config["file"]);
+	if(empty($old)){
+		$old = $data;
+	}
+	else{
+		foreach($data as &$val){
+			array_unshift($old, $val);
+		}
+	}
+
+	return getSenderResponseSet($config, $old);
 }
 
 /**
@@ -193,6 +230,9 @@ function runSender($config=null){
 				break;
 			case "set":
 				$message = getSenderResponseSet($config, $json["Data"]);
+				break;
+			case "add":
+				$message = getSenderResponseAdd($config, $json["Data"]);
 				break;
 			default:
 				$message = '{"Response": "BadRequest"}';
