@@ -1,6 +1,33 @@
 <?php
 
 /**
+ *	ロックファイルをチェックして作成する。
+ *	ロックファイルを作成できたらtrue、できなかったらfalseを返す。
+ */
+function _lock($config){
+	$timeout = 0;
+	while(symlink($config["file"], $config["lock"]) === false){
+		usleep(10*1000);
+		$timeout += 1;
+		if($timeout >= 100){
+			return false;
+		}
+	}
+	chmod($config["lock"], 0646);
+	return ture;
+}
+
+/**
+ *	ロックファイルを削除する
+ */
+function _unlock($config){
+	if(file_exists($config["lock"])){
+		return unlink($config["lock"]);
+	}
+	return true;
+}
+
+/**
  *	対象のJSONファイルを読み込んで連想配列を返す。
  *	@param filename 対象ファイルのパス
  *	@return JSONをパースした連想配列、失敗時はnull
@@ -229,10 +256,22 @@ function runSender($config=null){
 				$message = getSenderResponseGet($config);
 				break;
 			case "set":
-				$message = getSenderResponseSet($config, $json["Data"]);
+				if(_lock($config)){
+					$message = getSenderResponseSet($config, $json["Data"]);
+					_unlock($config);
+				}
+				else{
+					$message = '{"Response": "FileLocked"}';
+				}
 				break;
 			case "add":
-				$message = getSenderResponseAdd($config, $json["Data"]);
+				if(_lock($config)){
+					$message = getSenderResponseAdd($config, $json["Data"]);
+					_unlock($config);
+				}
+				else{
+					$message = '{"Response": "FileLocked"}';
+				}
 				break;
 			default:
 				$message = '{"Response": "BadRequest"}';
